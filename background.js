@@ -76,6 +76,34 @@ async function deleteEntry(id) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 	(async () => {
 		if (!msg || !msg.type) return;
+		if (msg.type === 'idbHasDuplicate') {
+			// { sourceText, translatedText }
+			const normalize = (s) => String(s||'')
+				.toLowerCase()
+				.replace(/[\u200B-\u200D\uFEFF]/g, '')
+				.replace(/\s+/g, ' ')
+				.trim();
+			try {
+				const db = await openDb();
+				const rows = await new Promise((resolve, reject) => {
+					const tx = db.transaction(STORE, 'readonly');
+					const store = tx.objectStore(STORE);
+					const req = store.getAll();
+					req.onsuccess = () => resolve(req.result || []);
+					req.onerror = () => reject(req.error);
+				});
+				const targetSrc = normalize(msg.sourceText);
+				const targetDst = normalize(msg.translatedText);
+				const dup = (rows || []).some(it => (
+					normalize(it && it.sourceText) === targetSrc &&
+					normalize(it && it.translatedText) === targetDst
+				));
+				sendResponse({ ok: true, dup });
+			} catch (e) {
+				sendResponse({ ok: false, dup: false, error: String(e) });
+			}
+			return;
+		}
 		if (msg.type === 'idbAddVocab') {
 			// { id, dateKey, sourceText, translatedText }
 			const id = msg.id || `${msg.dateKey}-${Date.now()}`;

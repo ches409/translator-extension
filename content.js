@@ -1003,6 +1003,15 @@ UniversalTranslator.prototype.saveVocabularyEntry = async function(sourceText, t
         return;
     }
 
+    // 문장 중복 방지를 위한 정규화 함수 (공백 압축, 소문자, 제로폭 제거)
+    const normalizeForDup = (s) => String(s||'')
+        .toLowerCase()
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const normSrc = normalizeForDup(sourceText);
+    const normDst = normalizeForDup(translatedText);
+
     // 날짜 키를 팝업과 동일한 방식으로 계산(로컬 날짜 기준, TZ 보정)
     const now = new Date();
     const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
@@ -1052,6 +1061,32 @@ UniversalTranslator.prototype.saveVocabularyEntry = async function(sourceText, t
         } catch (e) {
             store = {};
         }
+    }
+
+    // 모든 항목(단어/문장)에서 날짜와 무관하게 동일 원문+번역이 이미 있으면 저장하지 않음 (chrome.storage + IDB 전체 확인)
+    let foundDup = false;
+    try {
+        const dates = Object.keys(store || {});
+        for (const dk of dates) {
+            const arr = Array.isArray(store[dk]) ? store[dk] : [];
+            const dup = arr.some(it => (
+                normalizeForDup(it && it.sourceText) === normSrc &&
+                normalizeForDup(it && it.translatedText) === normDst
+            ));
+            if (dup) { foundDup = true; break; }
+        }
+    } catch (_) {}
+    if (!foundDup) {
+        try {
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                const resp = await new Promise((resolve) => chrome.runtime.sendMessage({ type: 'idbHasDuplicate', sourceText, translatedText }, resolve));
+                if (resp && resp.ok && resp.dup) {
+                    return; // IDB에서 전역 중복 발견
+                }
+            }
+        } catch (_) {}
+    } else {
+        return; // chrome.storage에 전역 중복 발견
     }
 
     if (!store[dateKey]) store[dateKey] = [];
