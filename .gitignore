@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+.tmp/
+.temp/
+
+# Caches
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+.eslintcache
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS-specific
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Chrome Extension artifacts
+*.crx
+*.pem
+web-ext-artifacts/
+
+# Archives
+*.zip
+*.tgz
+

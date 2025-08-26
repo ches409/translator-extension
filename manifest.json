@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "실시간 단어 번역기",
+  "version": "1.0",
+  "description": "웹페이지에서 드래그한 텍스트를 C키로 즉시 번역",
+  
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  
+  "host_permissions": [
+    "https://translation.googleapis.com/*"
+  ],
+  
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "*://*.doubleclick.net/*",
+        "*://*.googlesyndication.com/*",
+        "*://*.adservice.google.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "실시간 번역기"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
