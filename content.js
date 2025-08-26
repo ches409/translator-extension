@@ -20,12 +20,6 @@ class UniversalTranslator {
             // cross-origin 접근 시에도 아이콘 생성 방지
             return;
         }
-        // 팝업/작은 창에서는 표시하지 않음 (광고 팝업 등)
-        try {
-            if (window.opener || (window.innerWidth && window.innerWidth < 600) || (window.innerHeight && window.innerHeight < 480)) {
-                return;
-            }
-        } catch (e) {}
         const rootEl = document.documentElement;
         if (rootEl && rootEl.getAttribute('data-translator-injected') === '1') {
             return;
@@ -37,6 +31,7 @@ class UniversalTranslator {
         this.createPopup();
         this.createToggleButton();
         this.createSettingsButton();
+        this.createOpenPopupButton();
         this.addStyles();
         
         // 마우스 위치 추적
@@ -62,6 +57,8 @@ class UniversalTranslator {
                 !this.isInputFocused()) {
                 
                 e.preventDefault();
+                // 드래그 안내 인디케이터 즉시 숨김
+                this.hideSelectionIndicator();
                 this.translateSelectedText();
             }
         });
@@ -235,6 +232,86 @@ class UniversalTranslator {
         });
 
         document.body.appendChild(settingsButton);
+    }
+
+    createOpenPopupButton() {
+        // 기존 버튼 제거
+        try {
+            const exist = document.querySelector('.translator-open-popup');
+            if (exist && exist.parentNode) exist.parentNode.removeChild(exist);
+        } catch (e) {}
+
+        const btn = document.createElement('div');
+        btn.className = 'translator-open-popup';
+        btn.innerHTML = '🔗';
+        btn.title = '팝업 사이트 열기 (확장 ID 입력)';
+        btn.style.cssText = `
+            position: fixed !important;
+            top: 130px !important;
+            right: 20px !important;
+            width: 40px !important;
+            height: 40px !important;
+            background: #10b981 !important;
+            color: #fff !important;
+            border-radius: 50% !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer !important;
+            z-index: 2147483645 !important;
+            font-size: 16px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
+            transition: all 0.3s ease !important;
+            user-select: none !important;
+            opacity: 0.9 !important;
+        `;
+
+        btn.addEventListener('mouseenter', () => {
+            btn.style.transform = 'scale(1.1)';
+            btn.style.opacity = '1';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.transform = 'scale(1)';
+            btn.style.opacity = '0.9';
+        });
+        btn.addEventListener('click', async () => {
+            // 백그라운드에서 안전하게 팝업 페이지 열기
+            try {
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    await new Promise((resolve) => chrome.runtime.sendMessage({ type: 'openPopupPage' }, resolve));
+                    return;
+                }
+            } catch (e) {}
+            // 폴백: 현재 확장 ID로 직접 열기
+            try {
+                const url = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
+                    ? chrome.runtime.getURL('popup.html')
+                    : 'popup.html';
+                window.open(url, '_blank');
+            } catch (e) {}
+        });
+
+        document.body.appendChild(btn);
+    }
+
+    async getStoredExtId() {
+        try {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+                return new Promise((resolve) => {
+                    chrome.storage.sync.get(['extId'], (result) => resolve(result && result.extId ? result.extId : ''));
+                });
+            }
+        } catch (e) {}
+        try { return localStorage.getItem('extId') || ''; } catch (e) { return ''; }
+    }
+
+    async setStoredExtId(value) {
+        try {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+                return new Promise((resolve) => chrome.storage.sync.set({ extId: value || '' }, resolve));
+            }
+        } catch (e) {}
+        try { localStorage.setItem('extId', value || ''); } catch (e) {}
     }
 
     async getCurrentApiKey() {
@@ -557,8 +634,20 @@ class UniversalTranslator {
         }, 2000);
     }
 
+    hideSelectionIndicator() {
+        try {
+            const existing = document.querySelector('.translator-indicator');
+            if (existing && existing.parentNode) {
+                existing.parentNode.removeChild(existing);
+            }
+        } catch (e) {}
+    }
+
     async translateSelectedText() {
         if (!this.selectedText || this.isLoading) return;
+
+        // 안전 장치: 번역 시작 시에도 인디케이터 제거
+        this.hideSelectionIndicator();
 
         this.isLoading = true;
         this.showLoadingPopup();
@@ -754,31 +843,121 @@ class UniversalTranslator {
 
         this.popup.style.left = `${x}px`;
         this.popup.style.top = `${y}px`;
-        this.popup.style.opacity = '1';
-        this.popup.style.transform = 'scale(1) translateY(0)';
-        this.popup.style.pointerEvents = 'auto';
+        // 강제 표시: !important로 오버라이드
+        this.popup.style.setProperty('opacity', '1', 'important');
+        this.popup.style.setProperty('transform', 'scale(1) translateY(0)', 'important');
+        this.popup.style.setProperty('pointer-events', 'auto', 'important');
+        this.popup.style.setProperty('display', 'block', 'important');
+        this.popup.style.setProperty('visibility', 'visible', 'important');
+
+        // 실제 크기를 측정해 "드래그한 선택 영역" 바로 위에 정확히 배치 (경계 보정 포함)
+        requestAnimationFrame(() => {
+            try {
+                // 측정을 위해 일시적으로 표시 상태 보장
+                this.popup.style.setProperty('display', 'block', 'important');
+                this.popup.style.setProperty('visibility', 'hidden', 'important');
+                this.popup.style.setProperty('opacity', '0', 'important');
+
+                const popupRect = this.popup.getBoundingClientRect();
+                const popupWidth = Math.max(10, popupRect.width || 300);
+                const popupHeight = Math.max(10, popupRect.height || 80);
+                const margin = 12;
+
+                // 선택 영역의 바운딩 박스를 기준으로 배치
+                let anchorRect = null;
+                try {
+                    const sel = window.getSelection && window.getSelection();
+                    if (sel && sel.rangeCount > 0) {
+                        const range = sel.getRangeAt(0);
+                        const r = range.getBoundingClientRect();
+                        if (r && (r.width > 0 || r.height > 0)) {
+                            anchorRect = r;
+                        } else {
+                            const rects = range.getClientRects();
+                            if (rects && rects.length > 0) anchorRect = rects[0];
+                        }
+                    }
+                } catch (e) {}
+
+                // 기본 위치: 선택 영역 중심 상단, 없으면 마우스 기준
+                let x, y;
+                if (anchorRect) {
+                    x = (anchorRect.left + anchorRect.right) / 2 - popupWidth / 2;
+                    y = anchorRect.top - popupHeight - margin;
+                } else {
+                    x = this.mouseX - popupWidth / 2;
+                    y = this.mouseY - popupHeight - margin;
+                }
+
+                // 경계 보정
+                if (x < 10) x = 10;
+                if (x + popupWidth > window.innerWidth - 10) x = window.innerWidth - popupWidth - 10;
+                if (y < 10) {
+                    // 위에 공간이 없으면 기준의 아래쪽으로
+                    if (anchorRect) {
+                        y = anchorRect.bottom + margin;
+                    } else {
+                        y = this.mouseY + margin;
+                    }
+                }
+
+                this.popup.style.setProperty('left', `${x}px`, 'important');
+                this.popup.style.setProperty('top', `${y}px`, 'important');
+                this.popup.style.setProperty('visibility', 'visible', 'important');
+                this.popup.style.setProperty('opacity', '1', 'important');
+                this.popup.style.setProperty('transform', 'scale(1) translateY(0)', 'important');
+                this.popup.style.setProperty('pointer-events', 'auto', 'important');
+                this.popup.style.setProperty('z-index', '2147483647', 'important');
+            } catch (e) {}
+        });
     }
 
     hidePopup() {
-        this.popup.style.opacity = '0';
-        this.popup.style.transform = 'scale(0.8) translateY(10px)';
-        this.popup.style.pointerEvents = 'none';
+        // 강제 숨김: !important로 오버라이드
+        this.popup.style.setProperty('opacity', '0', 'important');
+        this.popup.style.setProperty('transform', 'scale(0.8) translateY(10px)', 'important');
+        this.popup.style.setProperty('pointer-events', 'none', 'important');
+        this.popup.style.setProperty('visibility', 'hidden', 'important');
     }
 }
 
+// 번역 유효성 검사: 제대로 번역된 경우만 저장
+UniversalTranslator.prototype.isValidTranslation = function(sourceText, translatedText) {
+    try {
+        const s = String(sourceText || '').trim();
+        const t = String(translatedText || '').trim();
+        if (!s || !t) return false;
+        if (t.includes('(번역 필요)')) return false;
+        const normalizedSource = s.toLowerCase();
+        const normalizedTranslated = t.toLowerCase().replace(/^"|"$/g, '');
+        if (normalizedSource === normalizedTranslated) return false;
+        return true;
+    } catch (_) {
+        return false;
+    }
+};
+
 // 단어장 저장 메서드
 UniversalTranslator.prototype.saveVocabularyEntry = async function(sourceText, translatedText) {
-    const entry = {
-        sourceText,
-        translatedText,
-        url: location.href,
-        timestamp: Date.now()
-    };
+    // 유효하지 않은 번역은 저장하지 않음
+    if (!this.isValidTranslation(sourceText, translatedText)) {
+        return;
+    }
 
     // 날짜 키를 팝업과 동일한 방식으로 계산(로컬 날짜 기준, TZ 보정)
     const now = new Date();
     const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
     const dateKey = localDate.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // 고정 ID(시간/URL 미사용): 날짜+원문+번역 기반
+    const makeIdSafe = (s) => encodeURIComponent(String(s||'').trim()).slice(0,256);
+    const id = `${dateKey}-${makeIdSafe(sourceText)}-${makeIdSafe(translatedText)}`;
+
+    const entry = {
+        id,
+        sourceText,
+        translatedText
+    };
 
     const readFromChrome = () => new Promise((resolve) => {
         try {
@@ -817,6 +996,12 @@ UniversalTranslator.prototype.saveVocabularyEntry = async function(sourceText, t
     }
 
     if (!store[dateKey]) store[dateKey] = [];
+    // 동일한 ID가 이미 있으면 저장 생략
+    const alreadyExists = store[dateKey].some(i => (i.id || '') === id);
+    if (alreadyExists) {
+        return;
+    }
+    // 같은 원문이 있으면 최신 번역으로 교체
     store[dateKey] = store[dateKey].filter(i => i.sourceText !== sourceText);
     store[dateKey].push(entry);
 
@@ -836,11 +1021,10 @@ UniversalTranslator.prototype.saveVocabularyEntry = async function(sourceText, t
         if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
             chrome.runtime.sendMessage({
                 type: 'idbAddVocab',
+                id,
                 dateKey,
                 sourceText,
-                translatedText,
-                url: entry.url,
-                timestamp: entry.timestamp
+                translatedText
             }, () => {});
         }
     } catch (e) {}
