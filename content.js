@@ -6,6 +6,7 @@ class UniversalTranslator {
         this.popup = null;
         this.isLoading = false;
         this.isEnabled = true;
+        this.indicatorEnabled = true;
         
         this.init();
     }
@@ -33,6 +34,7 @@ class UniversalTranslator {
         this.createSettingsButton();
         this.createOpenPopupButton();
         this.addStyles();
+        this.loadIndicatorSetting();
         
         // 마우스 위치 추적
         document.addEventListener('mousemove', (e) => {
@@ -76,6 +78,15 @@ class UniversalTranslator {
                 this.hidePopup();
             }
         });
+    }
+
+    async loadIndicatorSetting() {
+        try {
+            const enabled = await this.getShowIndicator();
+            this.indicatorEnabled = enabled;
+        } catch (_) {
+            this.indicatorEnabled = true;
+        }
     }
 
     addStyles() {
@@ -329,6 +340,30 @@ class UniversalTranslator {
         return localStorage.getItem('googleTranslateApiKey') || '';
     }
 
+    async getShowIndicator() {
+        // 기본값: true
+        try {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+                return new Promise((resolve) => {
+                    chrome.storage.sync.get(['showSelectionIndicator'], (result) => {
+                        if (Object.prototype.hasOwnProperty.call(result || {}, 'showSelectionIndicator')) {
+                            resolve(!!result.showSelectionIndicator);
+                        } else {
+                            resolve(true);
+                        }
+                    });
+                });
+            }
+        } catch (e) {}
+        try {
+            const v = localStorage.getItem('showSelectionIndicator');
+            if (v === null) return true;
+            return v === '1' || v === 'true';
+        } catch (e) {
+            return true;
+        }
+    }
+
     async showApiKeyModal() {
         // 기존 모달이 있으면 제거
         const existingModal = document.querySelector('.translator-modal');
@@ -353,6 +388,7 @@ class UniversalTranslator {
         `;
 
         const currentApiKey = await this.getCurrentApiKey();
+        const currentShowIndicator = await this.getShowIndicator();
 
         modal.innerHTML = `
             <div style="
@@ -434,6 +470,21 @@ class UniversalTranslator {
                 </div>
 
                 <div style="
+                    background: #ecfeff !important;
+                    padding: 14px !important;
+                    border-radius: 8px !important;
+                    margin-bottom: 20px !important;
+                    border-left: 4px solid #06b6d4 !important;
+                    color: #0e7490 !important;
+                    font-size: 13px !important;
+                ">
+                    <label for="indicatorToggle" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                        <input id="indicatorToggle" type="checkbox" ${currentShowIndicator ? 'checked' : ''} />
+                        드래그 시 'C' 인디케이터 표시
+                    </label>
+                </div>
+
+                <div style="
                     display: flex !important;
                     gap: 12px !important;
                     justify-content: flex-end !important;
@@ -477,23 +528,29 @@ class UniversalTranslator {
 
         modal.querySelector('#saveBtn').addEventListener('click', async () => {
             const apiKey = modal.querySelector('#apiKeyInput').value.trim();
+            const showIndicator = !!modal.querySelector('#indicatorToggle').checked;
             
             try {
                 // Chrome storage 사용 시도
                 if (typeof chrome !== 'undefined' && chrome.storage) {
-                    chrome.storage.sync.set({ googleTranslateApiKey: apiKey }, () => {
-                        this.showStatusMessage(apiKey ? 'API 키가 저장되었습니다' : '기본 사전 모드로 설정되었습니다');
+                    chrome.storage.sync.set({ googleTranslateApiKey: apiKey, showSelectionIndicator: showIndicator }, () => {
+                        this.indicatorEnabled = showIndicator;
+                        this.showStatusMessage('설정이 저장되었습니다');
                     });
                 } else {
                     // localStorage 폴백
                     localStorage.setItem('googleTranslateApiKey', apiKey);
-                    this.showStatusMessage(apiKey ? 'API 키가 저장되었습니다' : '기본 사전 모드로 설정되었습니다');
+                    try { localStorage.setItem('showSelectionIndicator', showIndicator ? '1' : '0'); } catch (e) {}
+                    this.indicatorEnabled = showIndicator;
+                    this.showStatusMessage('설정이 저장되었습니다');
                 }
             } catch (error) {
                 console.error('저장 오류:', error);
                 // localStorage로 폴백
                 localStorage.setItem('googleTranslateApiKey', apiKey);
-                this.showStatusMessage(apiKey ? 'API 키가 저장되었습니다' : '기본 사전 모드로 설정되었습니다');
+                try { localStorage.setItem('showSelectionIndicator', showIndicator ? '1' : '0'); } catch (e) {}
+                this.indicatorEnabled = showIndicator;
+                this.showStatusMessage('설정이 저장되었습니다');
             }
             
             modal.remove();
@@ -574,7 +631,9 @@ class UniversalTranslator {
         
         if (text && text.length > 0 && text.length <= 200) { // 200자 제한
             this.selectedText = text;
-            this.showSelectionIndicator();
+            if (this.indicatorEnabled) {
+                this.showSelectionIndicator();
+            }
         } else {
             this.selectedText = '';
         }
