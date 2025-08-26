@@ -4,199 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>실시간 번역기</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            width: 80%;
-            min-width: 320px;
-            padding: 20px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            margin: 0 auto;
-        }
-
-        .container {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .title {
-            font-size: 20px;
-            font-weight: bold;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 5px;
-        }
-
-        .subtitle {
-            font-size: 13px;
-            color: #666;
-            font-weight: 500;
-        }
-
-        .instructions {
-            background: linear-gradient(135deg, #f8f9ff, #f0f4ff);
-            padding: 16px;
-            border-radius: 10px;
-            margin-bottom: 16px;
-            border: 1px solid #e5e7eb;
-        }
-
-        .instructions h4 {
-            margin: 0 0 12px 0;
-            color: #374151;
-            font-size: 15px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .instructions ol {
-            margin: 0;
-            padding-left: 0;
-            list-style: none;
-            counter-reset: step-counter;
-        }
-
-        .instructions li {
-            margin-bottom: 8px;
-            font-size: 13px;
-            color: #4b5563;
-            line-height: 1.4;
-            padding-left: 24px;
-            position: relative;
-            counter-increment: step-counter;
-        }
-
-        .instructions li::before {
-            content: counter(step-counter);
-            position: absolute;
-            left: 0;
-            top: 0;
-            background: #667eea;
-            color: white;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            font-weight: bold;
-        }
-
-        .key-highlight {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 12px;
-        }
-
-        .status {
-            text-align: center;
-            padding: 12px 16px;
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-        }
-
-        .features {
-            background: #f9fafb;
-            border-radius: 8px;
-            padding: 14px;
-            border: 1px solid #e5e7eb;
-        }
-
-        .features h4 {
-            color: #374151;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .features ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-        }
-
-        .features li {
-            font-size: 12px;
-            color: #6b7280;
-            margin-bottom: 6px;
-            padding-left: 18px;
-            position: relative;
-        }
-
-        .features li::before {
-            content: "✨";
-            position: absolute;
-            left: 0;
-            top: 0;
-        }
-
-        .version {
-            text-align: center;
-            margin-top: 16px;
-            font-size: 11px;
-            color: #9ca3af;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 12px;
-        }
-
-        .toggle-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background: #10b981;
-            border-radius: 50%;
-            margin-right: 6px;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .divider {
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
-            margin: 16px 0;
-        }
-
-        /* 반응형 레이아웃 */
-        @media (max-width: 640px) {
-            .workspace { flex-direction: column !important; gap: 10px !important; }
-            #calendar { width: 100% !important; flex: 0 0 auto !important; }
-            #wordList { max-height: 360px !important; }
-        }
-    </style>
+    <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 	<div class="container">
@@ -212,29 +20,29 @@
 
 		<div class="divider"></div>
 
-		<div class="workspace" style="display:flex;gap:12px;align-items:flex-start">
-			<div id="calendar" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:0;width:240px;flex:0 0 240px">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-					<button id="prevMonth" style="border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">◀</button>
-					<div id="monthLabel" style="font-weight:600;color:#374151"></div>
-					<button id="nextMonth" style="border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">▶</button>
+		<div class="workspace">
+			<div id="calendar" class="calendar">
+				<div class="calendar-header">
+					<button id="prevMonth" class="btn">◀</button>
+					<div id="monthLabel" class="month-label"></div>
+					<button id="nextMonth" class="btn">▶</button>
 				</div>
-				<div id="calendarGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
+				<div id="calendarGrid"></div>
 			</div>
 
-			<div id="wordList" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:12px;max-height:420px;overflow:auto;flex:1 1 auto">
-				<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-					<div id="selectedDateLabel" style="font-weight:600;color:#374151">오늘</div>
+			<div id="wordList" class="word-list">
+				<div class="word-list-header">
+					<div id="selectedDateLabel" class="selected-date-label">오늘</div>
 					<div>
-						<button id="exportTxtBtn" style="border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer;margin-right:6px">TXT 내보내기</button>
-						<button id="exportBtn" style="border:1px solid #e5e7eb;background:#fff;border-radius:6px;padding:4px 8px;cursor:pointer">CSV 내보내기</button>
+						<button id="exportTxtBtn" class="btn">TXT 내보내기</button>
+						<button id="exportBtn" class="btn">CSV 내보내기</button>
 					</div>
 				</div>
-				<ul id="wordItems" style="list-style:none;padding:0;margin:0"></ul>
+				<ul id="wordItems"></ul>
 			</div>
 		</div>
 
-		<div class="version" style="margin-top:12px">
+		<div class="version">
 			Version 1.0 | Made with ❤️
 		</div>
 	</div>
