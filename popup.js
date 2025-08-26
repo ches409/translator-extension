@@ -37,6 +37,7 @@ function initCalendarVocab() {
 
 	let current = new Date();
 	let selectedDate = new Date();
+	let monthCounts = {}; // { 'YYYY-MM-DD': number }
 
 	const fmtDateKey = (d) => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 	const yyyymm = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -71,11 +72,24 @@ function initCalendarVocab() {
 		});
 	}
 
-	function renderMonth(d) {
+	async function renderMonth(d) {
 		const year = d.getFullYear();
 		const month = d.getMonth();
 		monthLabel.textContent = `${year}년 ${month+1}월`;
 		calendarGrid.innerHTML = '';
+
+		// 월별 저장 카운트 로드 (IDB 우선)
+		monthCounts = {};
+		try {
+			if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+				const resp = await new Promise((resolve) => {
+					chrome.runtime.sendMessage({ type: 'idbListMonthCounts', y: year, m: month+1 }, resolve);
+				});
+				if (resp && resp.ok && resp.counts) {
+					monthCounts = resp.counts || {};
+				}
+			}
+		} catch (e) {}
 
 		const firstDay = new Date(year, month, 1);
 		const startWeekday = firstDay.getDay();
@@ -112,6 +126,7 @@ function initCalendarVocab() {
 			const cellDate = new Date(year, month, day);
 			const isToday = fmtDateKey(cellDate) === fmtDateKey(new Date());
 			const isSelected = fmtDateKey(cellDate) === fmtDateKey(selectedDate);
+			const hasAny = (monthCounts[fmtDateKey(cellDate)] || 0) > 0;
 			if (isSelected) {
 				cell.style.background = '#eef2ff';
 				cell.style.borderColor = '#6366f1';
@@ -120,6 +135,9 @@ function initCalendarVocab() {
 			} else if (isToday) {
 				cell.style.borderColor = '#6366f1';
 				cell.style.fontWeight = '700';
+			} else if (!hasAny) {
+				cell.style.color = '#9ca3af'; // 회색 텍스트
+				cell.style.borderColor = '#e5e7eb';
 			}
 
 			cell.addEventListener('click', async () => {

@@ -76,6 +76,41 @@ async function deleteEntry(id) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 	(async () => {
 		if (!msg || !msg.type) return;
+		if (msg.type === 'idbListMonthCounts') {
+			// { y, m } 1-based month
+			try {
+				const y = Number(msg.y);
+				const m = Number(msg.m); // 1-12
+				if (!y || !m) { sendResponse({ ok: false, error: 'bad params' }); return; }
+				const mm = String(m).padStart(2, '0');
+				const lower = `${y}-${mm}-01`;
+				const upper = `${y}-${mm}-31`;
+				const db = await openDb();
+				const counts = {};
+				await new Promise((resolve, reject) => {
+					const tx = db.transaction(STORE, 'readonly');
+					const idx = tx.objectStore(STORE).index('byDate');
+					const range = IDBKeyRange.bound(lower, upper);
+					const cursorReq = idx.openCursor(range);
+					cursorReq.onsuccess = (e) => {
+						const cursor = e.target.result;
+						if (cursor) {
+							const v = cursor.value;
+							const dk = (v && v.dateKey) ? v.dateKey : '';
+							if (dk) counts[dk] = (counts[dk] || 0) + 1;
+							cursor.continue();
+						} else {
+							resolve();
+						}
+					};
+					cursorReq.onerror = () => reject(cursorReq.error);
+				});
+				sendResponse({ ok: true, counts });
+			} catch (e) {
+				sendResponse({ ok: false, error: String(e) });
+			}
+			return;
+		}
 		if (msg.type === 'idbHasDuplicate') {
 			// { sourceText, translatedText }
 			const normalize = (s) => String(s||'')
