@@ -160,17 +160,69 @@ function initCalendarVocab() {
 			left.innerHTML = `<div style="font-weight:600;color:#111827">${escapeHtml(it.sourceText)}</div>
 			<div style="font-size:12px;color:#6b7280">${escapeHtml(it.translatedText)}</div>`;
 
-			const right = document.createElement('a');
-			right.textContent = '↗';
-			right.href = it.url || '#';
-			right.target = '_blank';
-			right.style.textDecoration = 'none';
-			right.style.fontSize = '12px';
-			right.style.color = '#6366f1';
+			const right = document.createElement('div');
+			right.style.display = 'flex';
+			right.style.gap = '8px';
+
+			const openA = document.createElement('a');
+			openA.textContent = '↗';
+			openA.href = it.url || '#';
+			openA.target = '_blank';
+			openA.style.textDecoration = 'none';
+			openA.style.fontSize = '12px';
+			openA.style.color = '#6366f1';
+
+			const editBtn = document.createElement('button');
+			editBtn.textContent = '수정';
+			editBtn.style.fontSize = '12px';
+			editBtn.style.border = '1px solid #d1d5db';
+			editBtn.style.background = '#fff';
+			editBtn.style.borderRadius = '4px';
+			editBtn.style.padding = '2px 6px';
+			editBtn.style.cursor = 'pointer';
+
+			const delBtn = document.createElement('button');
+			delBtn.textContent = '삭제';
+			delBtn.style.fontSize = '12px';
+			delBtn.style.border = '1px solid #ef4444';
+			delBtn.style.color = '#ef4444';
+			delBtn.style.background = '#fff';
+			delBtn.style.borderRadius = '4px';
+			delBtn.style.padding = '2px 6px';
+			delBtn.style.cursor = 'pointer';
+
+			right.appendChild(openA);
+			right.appendChild(editBtn);
+			right.appendChild(delBtn);
 
 			li.appendChild(left);
 			li.appendChild(right);
 			wordItems.appendChild(li);
+
+			editBtn.addEventListener('click', async () => {
+				const newSource = prompt('원문 수정', it.sourceText || '');
+				if (newSource == null) return;
+				const newTranslated = prompt('번역 수정', it.translatedText || '');
+				if (newTranslated == null) return;
+				const dateKey = fmtDateKey(new Date(it.timestamp || Date.now()));
+				const id = it.id || `${dateKey}-${encodeURIComponent(it.sourceText||'')}-${encodeURIComponent(it.translatedText||'')}`;
+				const payload = { type: 'idbUpdateVocab', id, dateKey, sourceText: newSource, translatedText: newTranslated };
+				try {
+					await new Promise((resolve) => chrome.runtime.sendMessage(payload, resolve));
+				} catch (e) {}
+				await loadWordsForSelected();
+			});
+
+			delBtn.addEventListener('click', async () => {
+				if (!confirm('삭제하시겠습니까?')) return;
+				const dateKey = fmtDateKey(new Date(it.timestamp || Date.now()));
+				const id = it.id || `${dateKey}-${encodeURIComponent(it.sourceText||'')}-${encodeURIComponent(it.translatedText||'')}`;
+				const payload = { type: 'idbDeleteVocab', id, dateKey };
+				try {
+					await new Promise((resolve) => chrome.runtime.sendMessage(payload, resolve));
+				} catch (e) {}
+				await loadWordsForSelected();
+			});
 		}
 	}
 
