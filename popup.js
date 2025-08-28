@@ -13,6 +13,59 @@ document.addEventListener('DOMContentLoaded', function() {
 	initCalendarVocab();
 });
 
+// Web Speech API: 텍스트 발음 도우미
+function detectPreferredLangForText(text, fallbackLang) {
+	try {
+		const s = String(text||'');
+		if (/[\u3131-\uD79D]/.test(s)) return 'ko-KR';
+		if (/[A-Za-z]/.test(s)) return 'en-US';
+		if (/[\u3040-\u30ff]/.test(s)) return 'ja-JP';
+		if (/[\u4e00-\u9fff]/.test(s)) return 'zh-CN';
+		return fallbackLang || 'en-US';
+	} catch (_) {
+		return fallbackLang || 'en-US';
+	}
+}
+
+function pickVoiceByLang(lang) {
+	try {
+		const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+		if (!voices || voices.length === 0) return null;
+		const primaryTag = String(lang||'').split('-')[0];
+		return (
+			voices.find(v => v.lang === lang) ||
+			voices.find(v => (v.lang||'').toLowerCase().startsWith(primaryTag.toLowerCase())) ||
+			voices[0]
+		);
+	} catch (_) {
+		return null;
+	}
+}
+
+function speakText(text, preferredLang) {
+	try {
+		if (!('speechSynthesis' in window)) {
+			alert('이 브라우저에서는 음성 합성이 지원되지 않습니다.');
+			return;
+		}
+		const lang = preferredLang || detectPreferredLangForText(text, 'en-US');
+		speechSynthesis.cancel();
+		const u = new SpeechSynthesisUtterance(String(text||''));
+		u.lang = lang;
+		u.rate = 1;
+		u.pitch = 1;
+		u.volume = 1;
+		const v = pickVoiceByLang(lang);
+		if (v) u.voice = v;
+		speechSynthesis.speak(u);
+	} catch (e) {
+		console.warn('TTS 실패:', e);
+	}
+}
+
+// 일부 환경에서 voices가 지연 로드되므로 미리 트리거
+try { if ('speechSynthesis' in window) { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = function() { /* no-op, 캐시 */ }; } } catch (e) {}
+
 // 현재 탭에서 번역기 상태 확인 (실제로는 content script와 통신)
 function checkTranslatorStatus() {
 	const indicator = document.querySelector('.toggle-indicator');
@@ -23,17 +76,32 @@ function checkTranslatorStatus() {
 
 checkTranslatorStatus();
 
-function initCalendarVocab() {
+async function initCalendarVocab() {
 	const calendarGrid = document.getElementById('calendarGrid');
 	const monthLabel = document.getElementById('monthLabel');
 	const selectedDateLabel = document.getElementById('selectedDateLabel');
 	const wordItems = document.getElementById('wordItems');
 	const exportBtn = document.getElementById('exportBtn');
 	const exportTxtBtn = document.getElementById('exportTxtBtn');
+	const toggleHideModeBtn = document.getElementById('toggleHideModeBtn');
 	const prevBtn = document.getElementById('prevMonth');
 	const nextBtn = document.getElementById('nextMonth');
 
 	if (!calendarGrid || !monthLabel || !selectedDateLabel || !wordItems) return;
+
+	// 가리기 모드(저장/복원): 0=원상태, 1=영어(원문) 가리기, 2=뜻(번역) 가리기
+	let hideMode = 0;
+
+	try {
+		const raw = (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync)
+			? await new Promise((resolve)=>chrome.storage.sync.get(['hideMode'], resolve))
+			: null;
+		if (raw && typeof raw.hideMode === 'number') {
+			hideMode = raw.hideMode;
+		} else {
+			try { hideMode = parseInt(localStorage.getItem('hideMode')||'0', 10) || 0; } catch (e) {}
+		}
+	} catch (e) {}
 
 	let current = new Date();
 	let selectedDate = new Date();
@@ -175,16 +243,52 @@ function initCalendarVocab() {
 			li.style.borderBottom = '1px solid #f3f4f6';
 
 			const left = document.createElement('div');
-			left.innerHTML = `<div style="font-weight:600;color:#111827">${escapeHtml(it.sourceText)}</div>
-			<div style="font-size:12px;color:#6b7280">${escapeHtml(it.translatedText)}</div>`;
+			const sourceSpan = document.createElement('div');
+			sourceSpan.className = 'v-src';
+			sourceSpan.style.fontWeight = '600';
+			sourceSpan.style.color = '#111827';
+			sourceSpan.textContent = String(it.sourceText||'');
+			const transSpan = document.createElement('div');
+			transSpan.className = 'v-trans';
+			transSpan.style.fontSize = '12px';
+			transSpan.style.color = '#6b7280';
+			transSpan.textContent = String(it.translatedText||'');
+			left.appendChild(sourceSpan);
+			left.appendChild(transSpan);
 
 			const right = document.createElement('div');
 			right.style.display = 'flex';
 			right.style.gap = '8px';
 
+			const speakSrcBtn = document.createElement('button');
+			speakSrcBtn.textContent = '🔊원문';
+			speakSrcBtn.style.fontSize = '12px';
+			speakSrcBtn.style.border = '1px solid #3b82f6';
+			speakSrcBtn.style.color = '#1d4ed8';
+			speakSrcBtn.style.background = '#fff';
+			speakSrcBtn.style.borderRadius = '4px';
+			speakSrcBtn.style.padding = '2px 6px';
+			speakSrcBtn.style.cursor = 'pointer';
+
+			const speakDstBtn = document.createElement('button');
+			speakDstBtn.textContent = '🔊번역';
+			speakDstBtn.style.fontSize = '12px';
+			speakDstBtn.style.border = '1px solid #3b82f6';
+			speakDstBtn.style.color = '#1d4ed8';
+			speakDstBtn.style.background = '#fff';
+			speakDstBtn.style.borderRadius = '4px';
+			speakDstBtn.style.padding = '2px 6px';
+			speakDstBtn.style.cursor = 'pointer';
+
 			const openA = document.createElement('a');
 			openA.textContent = '↗';
-			openA.href = it.url || '#';
+			// 원문(없으면 번역문)으로 구글 검색
+			try {
+				const q = (it && it.sourceText) ? String(it.sourceText) : String(it && it.translatedText || '');
+				openA.href = 'https://www.google.com/search?q=' + encodeURIComponent(q);
+			} catch (e) {
+				openA.href = '#';
+			}
 			openA.target = '_blank';
 			openA.style.textDecoration = 'none';
 			openA.style.fontSize = '12px';
@@ -210,12 +314,30 @@ function initCalendarVocab() {
 			delBtn.style.cursor = 'pointer';
 
 			right.appendChild(openA);
+			right.appendChild(speakSrcBtn);
+			right.appendChild(speakDstBtn);
 			right.appendChild(editBtn);
 			right.appendChild(delBtn);
+			speakSrcBtn.addEventListener('click', () => {
+				speakText(it.sourceText, detectPreferredLangForText(it.sourceText, 'en-US'));
+			});
+
+			speakDstBtn.addEventListener('click', () => {
+				speakText(it.translatedText, detectPreferredLangForText(it.translatedText, 'ko-KR'));
+			});
 
 			li.appendChild(left);
 			li.appendChild(right);
 			wordItems.appendChild(li);
+			// 가리기 상태 적용
+			if (hideMode === 1) {
+				sourceSpan.style.filter = 'blur(6px)';
+				sourceSpan.style.userSelect = 'none';
+			}
+			if (hideMode === 2) {
+				transSpan.style.filter = 'blur(6px)';
+				transSpan.style.userSelect = 'none';
+			}
 
 			editBtn.addEventListener('click', async () => {
 				const newSource = prompt('원문 수정', it.sourceText || '');
@@ -256,12 +378,57 @@ function initCalendarVocab() {
 		await loadWordsForSelected();
 	});
 
+	// 단일 버튼 3단계 토글
+	function persistHideState() {
+		try {
+			if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+				chrome.storage.sync.set({ hideMode }, () => {});
+			} else {
+				localStorage.setItem('hideMode', String(hideMode||0));
+			}
+		} catch (e) {}
+	}
+
+	function updateHideButtonLabel() {
+		if (!toggleHideModeBtn) return;
+		if (hideMode === 0) toggleHideModeBtn.textContent = '영어 가리기';
+		else if (hideMode === 1) toggleHideModeBtn.textContent = '뜻 가리기';
+		else toggleHideModeBtn.textContent = '다시 원상태';
+	}
+
+	function applyHideStateToList() {
+		try {
+			const items = wordItems.querySelectorAll('li');
+			items.forEach((li) => {
+				const source = li.querySelector('.v-src');
+				const trans = li.querySelector('.v-trans');
+				if (source) {
+					source.style.filter = (hideMode === 1) ? 'blur(6px)' : 'none';
+					source.style.userSelect = (hideMode === 1) ? 'none' : 'auto';
+				}
+				if (trans) {
+					trans.style.filter = (hideMode === 2) ? 'blur(6px)' : 'none';
+					trans.style.userSelect = (hideMode === 2) ? 'none' : 'auto';
+				}
+			});
+		} catch (e) {}
+	}
+
+	updateHideButtonLabel();
+
+	toggleHideModeBtn && toggleHideModeBtn.addEventListener('click', () => {
+		hideMode = (hideMode + 1) % 3; // 0 -> 1 -> 2 -> 0
+		persistHideState();
+		updateHideButtonLabel();
+		applyHideStateToList();
+	});
+
 	exportBtn && exportBtn.addEventListener('click', async () => {
 		const store = await readStore();
 		const key = fmtDateKey(selectedDate);
 		const items = Array.isArray(store[key]) ? store[key] : [];
-		const csv = ['원문,번역,URL,시간'].concat(items.map(i => (
-			`"${(i.sourceText||'').replace(/"/g,'""')}","${(i.translatedText||'').replace(/"/g,'""')}","${(i.url||'').replace(/"/g,'""')}","${new Date(i.timestamp||Date.now()).toLocaleString()}"`
+		const csv = ['원문,번역'].concat(items.map(i => (
+			`"${(i.sourceText||'').replace(/"/g,'""')}","${(i.translatedText||'').replace(/"/g,'""')}"`
 		))).join('\n');
 		const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
 		const url = URL.createObjectURL(blob);
@@ -276,7 +443,7 @@ function initCalendarVocab() {
 		const store = await readStore();
 		const key = fmtDateKey(selectedDate);
 		const items = Array.isArray(store[key]) ? store[key] : [];
-		const lines = items.map(i => `- ${i.sourceText} => ${i.translatedText} [${new Date(i.timestamp||Date.now()).toLocaleString()}] ${i.url||''}`);
+		const lines = items.map(i => `- ${i.sourceText} => ${i.translatedText}`);
 		const content = `Vocabulary ${key}\n\n` + (lines.join('\n') || 'No items');
 		const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
 		const url = URL.createObjectURL(blob);

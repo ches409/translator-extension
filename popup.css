@@ -31,7 +31,7 @@ body { width: 80%; min-width: 320px; padding: 20px; font-family: -apple-system, 
 .month-label{ font-weight:600; color:#374151; }
 #calendarGrid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
 .word-list{ background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; max-height:420px; overflow:auto; flex:1 1 auto; }
-.word-list-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.word-list-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; position:sticky; top:0; background:#ffffff; z-index:3; border-bottom:1px solid #f3f4f6; padding-bottom:8px; }
 .selected-date-label{ font-weight:600; color:#374151; }
 #exportTxtBtn{ margin-right:6px; }
 #wordItems{ list-style:none; padding:0; margin:0; }
