@@ -210,7 +210,7 @@ async function initCalendarVocab() {
 
 			cell.addEventListener('click', async () => {
 				selectedDate = cellDate;
-				selectedDateLabel.textContent = `${fmtDateKey(selectedDate)} 단어장`;
+				selectedDateLabel.textContent = `${fmtDateKey(selectedDate)}`;
 				renderMonth(current);
 				await loadWordsForSelected();
 			});
@@ -285,7 +285,7 @@ async function initCalendarVocab() {
 			// 원문(없으면 번역문)으로 구글 검색
 			try {
 				const q = (it && it.sourceText) ? String(it.sourceText) : String(it && it.translatedText || '');
-				openA.href = 'https://www.google.com/search?q=' + encodeURIComponent(q);
+				openA.href = 'https://www.google.com/search?q=' + encodeURIComponent(q + ' 영어 번역');
 			} catch (e) {
 				openA.href = '#';
 			}
@@ -456,7 +456,7 @@ async function initCalendarVocab() {
 
 	// 초기 렌더
 	renderMonth(current);
-	selectedDateLabel.textContent = `${fmtDateKey(selectedDate)} 단어장`;
+	selectedDateLabel.textContent = `${fmtDateKey(selectedDate)}`;
 	loadWordsForSelected();
 
 	// 저장 알림 수신 시 비동기 새로고침
