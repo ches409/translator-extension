@@ -84,6 +84,7 @@ async function initCalendarVocab() {
 	const exportBtn = document.getElementById('exportBtn');
 	const exportTxtBtn = document.getElementById('exportTxtBtn');
 	const toggleHideModeBtn = document.getElementById('toggleHideModeBtn');
+	const addWordBtn = document.getElementById('addWordBtn');
 	const prevBtn = document.getElementById('prevMonth');
 	const nextBtn = document.getElementById('nextMonth');
 
@@ -376,6 +377,74 @@ async function initCalendarVocab() {
 		current = new Date(current.getFullYear(), current.getMonth()+1, 1);
 		renderMonth(current);
 		await loadWordsForSelected();
+	});
+
+	// 수동 추가: + 버튼 핸들러
+	addWordBtn && addWordBtn.addEventListener('click', async () => {
+		try {
+			const src = prompt('원문(영어 등)을 입력하세요');
+			if (src == null) return;
+			const s = String(src).trim();
+			if (!s) return;
+			const dst = prompt('번역(의미)을 입력하세요');
+			if (dst == null) return;
+			const t = String(dst).trim();
+			if (!t) return;
+
+			// 날짜 키 및 ID 구성 (content.js 저장 규칙과 유사)
+			const now = new Date();
+			const dateKey = new Date(now.getTime() - now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+			const makeIdSafe = (v) => encodeURIComponent(String(v||'').trim()).slice(0,256);
+			const id = `${dateKey}-${makeIdSafe(s)}-${makeIdSafe(t)}`;
+
+			// 전역 중복 체크 (IDB)
+			let dup = false;
+			try {
+				if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+					const resp = await new Promise((resolve) => chrome.runtime.sendMessage({ type: 'idbHasDuplicate', sourceText: s, translatedText: t }, resolve));
+					dup = !!(resp && resp.ok && resp.dup);
+				}
+			} catch (e) {}
+			if (dup) {
+				alert('이미 동일한 항목이 존재합니다.');
+				return;
+			}
+
+			// chrome.storage.sync에도 병행 반영
+			let store = {};
+			try {
+				if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+					store = await new Promise((resolve)=>chrome.storage.sync.get(['vocabByDate'], (r)=>resolve(r && r.vocabByDate ? r.vocabByDate : {})));
+				} else {
+					const raw = localStorage.getItem('vocabByDate');
+					store = raw ? JSON.parse(raw) : {};
+				}
+			} catch (_) {}
+			if (!Array.isArray(store[dateKey])) store[dateKey] = [];
+			// 같은 ID 또는 같은 원문이 있으면 교체
+			store[dateKey] = store[dateKey].filter(it => (it.id !== id) && (it.sourceText !== s));
+			store[dateKey].push({ id, sourceText: s, translatedText: t, timestamp: Date.now(), dateKey });
+			try {
+				if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+					await new Promise((resolve)=>chrome.storage.sync.set({ vocabByDate: store }, resolve));
+				} else {
+					localStorage.setItem('vocabByDate', JSON.stringify(store));
+				}
+			} catch (_) {}
+
+			// IndexedDB(백그라운드) 저장
+			try {
+				if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+					await new Promise((resolve)=>chrome.runtime.sendMessage({ type: 'idbAddVocab', id, dateKey, sourceText: s, translatedText: t }, resolve));
+				}
+			} catch (_) {}
+
+			// 목록/카운트 갱신
+			await loadWordsForSelected();
+			renderMonth(current);
+		} catch (e) {
+			console.warn('수동 추가 실패:', e);
+		}
 	});
 
 	// 단일 버튼 3단계 토글
